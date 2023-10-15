@@ -104,14 +104,14 @@ namespace net.xBei.Clients.Oss {
             return new OssClient(config.EndPoint, config.AccessKeyId, config.AccessKeySecret);
         }
         private OssClient CreateClientBySts(AliOssSettings.Config ossSettings) {
-            if (string.IsNullOrWhiteSpace(ossSettings.BucketEndPoint)
+            if (string.IsNullOrWhiteSpace(ossSettings.EndPoint)
                 || string.IsNullOrWhiteSpace(ossSettings.AccessKeyId)
                 || string.IsNullOrWhiteSpace(ossSettings.AccessKeySecret)
                 || string.IsNullOrWhiteSpace(ossSettings.SecurityToken)) {
                 LogError("AliOssClient 配置错误：必须指定一个“EndPoint”、“AccessKeyId”、“AccessKeySecret”、“SecurityToken”");
                 throw new Exception("AliOssClient 配置错误：必须指定“EndPoint”、“AccessKeyId”、“AccessKeySecret”、“SecurityToken”");
             }
-            return new OssClient(ossSettings.BucketEndPoint, ossSettings.AccessKeyId, ossSettings.AccessKeySecret, ossSettings.SecurityToken);
+            return new OssClient(ossSettings.EndPoint, ossSettings.AccessKeyId, ossSettings.AccessKeySecret, ossSettings.SecurityToken);
         }
 
         /// <summary>

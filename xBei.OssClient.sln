@@ -3,7 +3,14 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xBei.OssClient", "xBei.OssClient\xBei.OssClient.csproj", "{57072441-0E08-45F5-A40C-ED30132A0DB8}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "xBei.OssClient", "xBei.OssClient\xBei.OssClient.csproj", "{57072441-0E08-45F5-A40C-ED30132A0DB8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "其他文件", "其他文件", "{E28E7320-8DDD-407C-8BF5-CDC9E764296F}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		LICENSE.txt = LICENSE.txt
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

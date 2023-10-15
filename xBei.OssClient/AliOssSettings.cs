@@ -42,11 +42,6 @@ namespace net.xBei.Clients.Oss {
             /// </summary>
             public bool IsDefault { get; set; } = default;
             //STS
-
-            /// <summary>
-            /// 
-            /// </summary>
-            public string BucketEndPoint { get; set; } = default!;
             /// <summary>
             /// 过期
             /// </summary>
