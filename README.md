@@ -1,15 +1,18 @@
 # xBei.OssClient
 
 ## 介绍
-阿里oss客户端，基于阿里官方sdk封装，支持net6.0;net7.0。
+
+阿里oss客户端，基于阿里官方sdk封装，支持net8.0。
 主要封装了Object相关操作，支持依赖注入。
 
 **开发中**
 
 ## 使用
+
 安装：`PM > Install-Package xBei.OssClient`
 
 ### 使用依赖注入
+
 配置`appsettings.json`
 ```json
 {
@@ -26,13 +29,16 @@
   }
 }
 ```
+
 注册服务：
+
 ```csharp
 services.Configure<AliOssSettings>(configuration.GetSection("OssSettings"));
 services.AddSingleton<AliOssClient>();
 ```
 
 ### 直接初始化
+
 ```csharp
 //STS临时授权
 var ossClient = new AliOssClient(new AliOssSettings.Config {

@@ -1,12 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>net6.0;net7.0</TargetFrameworks>
+		<TargetFrameworks>net8.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<RootNamespace>net.xBei.Clients.Oss</RootNamespace>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
-		<VersionPrefix>0.0.1</VersionPrefix>
+		<VersionPrefix>0.0.4</VersionPrefix>
 		<VersionSuffix>beta</VersionSuffix>
 		<PackageProjectUrl>https://github.com/koaqiu/xBei.OssClient</PackageProjectUrl>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
@@ -26,9 +26,11 @@
 		</None>
 	</ItemGroup>
 	<ItemGroup>
-		<PackageReference Include="Aliyun.OSS.SDK.NetCore" Version="2.13.0" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.1" />
-		<PackageReference Include="Microsoft.Extensions.Options" Version="7.0.1" />
+		<PackageReference Include="Aliyun.OSS.SDK.NetCore" Version="2.14.1" />
+		<PackageReference Include="AlibabaCloud.SDK.Sts20150401" Version="1.1.4" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
 	</ItemGroup>
 
 </Project>
