@@ -12,7 +12,7 @@ public class AliOssSettings {
     /// <summary>
     /// 可以配置多个服务，key建议使用<c>BucketName</c>
     /// </summary>
-    public Dictionary<string, AliOssSettings.Config> Services { get; set; } = default!;
+    public required Dictionary<string, Config> Services { get; set; }
     /// <summary>
     /// 是否开发模式
     /// </summary>

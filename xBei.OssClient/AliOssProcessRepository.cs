@@ -1,11 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Text;
+﻿using System.Diagnostics.CodeAnalysis;
 using net.xBei.Models.AliOss;
 
-namespace net.xBei.Clients.Oss; 
+namespace net.xBei.Clients.Oss;
 /// <summary>
 /// 阿里云OSS图片处理
 /// </summary>
@@ -48,7 +44,7 @@ public class AliOssProcessRepository {
     /// <param name="uri"></param>
     /// <param name="repository"></param>
     /// <returns></returns>
-    public static bool TryParse(Uri uri,[NotNullWhen(true)] out AliOssProcessRepository? repository) {
+    public static bool TryParse(Uri uri, [NotNullWhen(true)] out AliOssProcessRepository? repository) {
         //repository = new AliOssProcessRepository();
         if (uri.Query.Length < 1) {
             repository = default;

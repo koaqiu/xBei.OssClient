@@ -13,7 +13,7 @@ public sealed class AliOssClient {
     //private readonly OssSettingsResponse ossSettings;
     private readonly ILogger<AliOssClient>? logger;
     private readonly AliOssSettings options;
-    private static readonly Dictionary<string, AliOssClient> clients = new();
+    private static readonly Dictionary<string, AliOssClient> clients = [];
     private readonly AliOssSettings.Config config;
     /// <summary>
     /// 初始化（注入版本）
@@ -27,7 +27,7 @@ public sealed class AliOssClient {
             LogError("AliOssClient 配置错误");
             throw new Exception("AliOssClient 配置错误");
         }
-        if (this.options.Services.Count > 1 && this.options.Services.Values.All(x => x.IsDefault == false)) {
+        if (this.options.Services.Count > 2 && this.options.Services.Values.All(x => x.IsDefault == false)) {
             LogError("AliOssClient 配置错误：必须指定一个默认配置");
             throw new Exception("AliOssClient 配置错误：必须指定一个默认配置");
         }
@@ -127,7 +127,7 @@ public sealed class AliOssClient {
     /// <returns></returns>
     public bool ObjectExist(string obj) => Client.DoesObjectExist(BucketName, obj);
     /// <summary>
-    /// Object是否存在
+    /// Object是否存在，这个版本会在发生异常的时候重试3次
     /// </summary>
     /// <param name="obj"></param>
     /// <returns></returns>
@@ -142,7 +142,7 @@ public sealed class AliOssClient {
         return false;
     }
     /// <summary>
-    /// 
+    /// 获取“元数据”
     /// </summary>
     /// <param name="objectKey"></param>
     /// <returns></returns>
@@ -162,7 +162,7 @@ public sealed class AliOssClient {
     /// 上传JSON数据到 oss
     /// </summary>
     /// <param name="objectKey"></param>
-    /// <param name="json"></param>
+    /// <param name="json">使用<see cref="Encoding.UTF8"/>进行编码</param>
     /// <returns></returns>
     public async Task<PutObjectResult> UploadJsonAsync(string objectKey, string json)
         => await UploadAsync(objectKey, Encoding.UTF8.GetBytes(json), contentType: "application/json");
@@ -179,23 +179,23 @@ public sealed class AliOssClient {
     /// 上传数据到 oss
     /// </summary>
     /// <param name="objectKey"></param>
-    /// <param name="stream">必须是可读的</param>
+    /// <param name="stream">必须是可读的！并且要注意<see cref="Stream.Position"/>在正确的位置</param>
     /// <param name="contentType"></param>
     /// <returns></returns>
     public async Task<PutObjectResult> UploadAsync(string objectKey, Stream stream, string contentType = "application/octet-stream")
         => await UploadAsync(objectKey, stream, new ObjectMetadata() { ContentType = contentType });
     /// <summary>
-    /// 上传文件到 oss
+    /// 上传文件到 oss，优先自动从文件名中判断<c>Content-Type</c>，如果判断失败则使用<paramref name="contentType"/>
     /// </summary>
     /// <param name="objectKey"></param>
     /// <param name="fileToUpload">文件不可访问会报错</param>
-    /// <param name="contentType"></param>
+    /// <param name="contentType">如果未指定会使用：<c>application/octet-stream</c></param>
     /// <returns></returns>
     /// <exception cref="FileNotFoundException"></exception>
     public async Task<PutObjectResult> UploadFileAsync(string objectKey, string fileToUpload, string? contentType = default)
         => await UploadFileAsync(objectKey,
-                                     fileToUpload,
-                                     new ObjectMetadata() { ContentType = GetContentTypeByFilename(fileToUpload, contentType) });
+                                 fileToUpload,
+                                 new ObjectMetadata() { ContentType = GetContentTypeByFilename(fileToUpload, contentType) });
     /// <summary>
     /// 上传文件到 oss
     /// </summary>
@@ -255,36 +255,43 @@ public sealed class AliOssClient {
     /// <summary>
     /// 批量删除
     /// </summary>
-    /// <param name="uriList"></param>
-    /// <returns></returns>
-    public bool DeleteObjects(IEnumerable<Uri> uriList) {
+    /// <param name="uriList">传入的是完整的Uri地址，会自动尝试从中获取<c>BucketName</c>，获取失败的时候会使用默认<see cref="BucketName"/>的进行操作</param>
+    /// <returns>成功删除的数量。这个数量成功执行“删除操作”的数量，
+    /// 因为无法确认传入的地址是否是合法的所以确认检查是否成功删除无意义。</returns>
+    public int DeleteObjects(IEnumerable<Uri> uriList) {
         var dict = new List<KeyValuePair<string, string>>();
+        var c = 0;
         foreach (var uri in uriList) {
             var bucketName = GetBucketName(uri);
-            var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath.Substring(1));
-            if (Client.DoesObjectExist(bucketName, key) == false) continue;
+            var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath[1..]);
+            if (!Client.DoesObjectExist(bucketName, key)) {
+                c++;
+                continue;
+            }
+
             dict.Add(new KeyValuePair<string, string>(BucketName, key));
         }
         if (dict.Count == 0) {
-            return true;
+            return c;
         }
         foreach (var kv in dict.GroupBy(k => k.Key).ToList()) {
             var bucketName = kv.Key;
             var objects = kv.Select(k => k.Value).ToList();
-            var result = Client.DeleteObjects(new DeleteObjectsRequest(bucketName, objects));
+            Client.DeleteObjects(new DeleteObjectsRequest(bucketName, objects));
+            c++;
         }
-        return true;
+        return c;
     }
     /// <summary>
-    /// 删除
+    /// 删除，执行删除操作以后会检查（<see cref="OssClient.DoesObjectExist(string, string)"/>）是否删除成功
     /// </summary>
-    /// <param name="uri"></param>
-    /// <returns></returns>
+    /// <param name="uri">无法解析到正确的<c>BucketName</c>会抛出异常</param>
+    /// <exception cref="ArgumentException">如果<paramref name="uri"/>无法解析到<c>BucketName</c>时抛出</exception>"
+    /// <returns>删除成功时返回<see langword="true"/></returns>
     public bool DeleteObject(Uri uri) {
-        var bucketName = GetBucketName(uri);
-        if (string.IsNullOrWhiteSpace(bucketName)) {
+        if (!GetBucketName(uri, out var bucketName)) {
             LogError($"无效的地址：{uri}");
-            throw new Exception($"无效的地址：{uri}");
+            throw new ArgumentException($"无效的地址：{uri}", nameof(uri));
         }
         var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath[1..]);
         if (Client.DoesObjectExist(bucketName, key) == false) {
@@ -297,7 +304,7 @@ public sealed class AliOssClient {
     #endregion
     #region 复制
     /// <summary>
-    /// 复制（相同Bucket）
+    /// 复制（相同Bucket），会覆盖目标文件
     /// </summary>
     /// <param name="sourceObjectKey"></param>
     /// <param name="targetObjectKey"></param>
@@ -313,37 +320,61 @@ public sealed class AliOssClient {
         return tcs.Task;
     }
     #endregion
+    #region 移动
+    /// <summary>
+    /// 移动（相同Bucket），目标（<paramref name="targetObjectKey"/>）如果存在抛异常。
+    /// 如果源和目标相同会抛异常。
+    /// </summary>
+    /// <param name="sourceObjectKey"></param>
+    /// <param name="targetObjectKey"></param>
+    /// <exception cref="Exception">如果目标文件已经存在会抛出异常</exception>"
+    /// <returns></returns>
+    public async Task<bool> MoveAsync(string sourceObjectKey, string targetObjectKey) {
+        if (sourceObjectKey.Equals(targetObjectKey, StringComparison.OrdinalIgnoreCase)) {
+            throw new Exception("源和目标相同");
+        }
+        if (Client.DoesObjectExist(BucketName, targetObjectKey)) {
+            throw new Exception($"目标文件已经存在：{targetObjectKey}");
+        }
+        await CopyAsync(sourceObjectKey, targetObjectKey);
+        if (!Client.DoesObjectExist(BucketName, targetObjectKey)) {
+            return false;
+        }
+        Client.DeleteObject(BucketName, sourceObjectKey);
+        return true;
+    }
+    #endregion
     #region 下载
     /// <summary>
     /// 从oss下载文本数据（默认编码：<see cref="Encoding.UTF8"/>）
     /// </summary>
     /// <param name="key"></param>
-    /// <returns></returns>
+    /// <returns>如果下载失败会返回<see cref="string.Empty"/></returns>
     public async Task<string> DownloadStringAsync(string key)
         => Encoding.UTF8.GetString((await DownloadAsync(key)).data);
     /// <summary>
     /// 从oss下载数据
     /// </summary>
     /// <param name="key"></param>
-    /// <returns></returns>
-    internal async Task<(byte[] data, string contentType)> DownloadAsync(string key) {
+    /// <returns>如果下载失败会返回空的字节数组</returns>
+    internal async Task<(byte[] data, string? contentType)> DownloadAsync(string key) {
         using var stream = new MemoryStream();
-        string? contentType;
+        string? contentType = default;
         try {
             var obj = await GetObjectAsync(BucketName, key);
             contentType = obj.Metadata.ContentType;
             using var requestStream = obj.Content;
             await requestStream.CopyToAsync(stream);
         } catch (Exception ex) {
-            contentType = string.Empty;
-            Console.WriteLine($"Download oss://{BucketName}/{key} error {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
+            //Console.WriteLine($"Download oss://{BucketName}/{key} error {ex.Message}");
+            //Console.WriteLine(ex.StackTrace);
+            logger?.LogError(ex, $"Download oss://{BucketName}/{key} error");
         }
         return (stream.ToArray(), contentType);
     }
 
     /// <summary>
-    /// 下载
+    /// 下载到内存
     /// </summary>
     /// <param name="uri"></param>
     /// <param name="process"></param>
@@ -419,8 +450,10 @@ public sealed class AliOssClient {
     /// <param name="uri"></param>
     /// <returns></returns>
     public async Task<Models.OssImageInfo?> GetImageInfoAsync(Uri uri) {
-        var bucketName = GetBucketName(uri);
-        var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath.Substring(1));
+        if(!GetBucketName(uri, out var bucketName)) {
+            return default;
+        }
+        var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath[1..]);
         using var stream = new MemoryStream();
         string? contentType;
         try {
@@ -463,6 +496,40 @@ public sealed class AliOssClient {
             return uri.Host.Split(".").FirstOrDefault();
         }
         return null;
+    }
+    /// <summary>
+    /// 从<paramref name="url"/>中判断BucketName，判断失败返回 <see langword="default"/>。
+    /// 首先会从配置中读取自定义域名进行匹配。
+    /// 如果匹配失败会尝试按照aliyun的规则获取BucketName
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="bucketName"></param>
+    /// <returns></returns>
+    public bool GetBucketName(string url, [NotNullWhen(true)] out string? bucketName)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? GetBucketName(uri, out bucketName) : (bucketName = default) != default;
+    /// <summary>
+    /// 从<paramref name="uri"/>中判断BucketName，判断失败返回 <see langword="default"/>。
+    /// 首先会从配置中读取自定义域名进行匹配。
+    /// 如果匹配失败会尝试按照aliyun的规则获取BucketName
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <param name="bucketName"></param>
+    /// <returns></returns>
+    public bool GetBucketName(Uri uri, [NotNullWhen(true)] out string? bucketName) {
+        bucketName = default;
+        foreach (var item in options.Services) {
+            if (string.Compare(uri.Host, item.Value.ImageHost
+                                                   ?.Replace("https://", "")
+                                                    .Replace("http://", ""), true) == 0) {
+                bucketName = item.Value.BucketName;
+                return true;
+            }
+        }
+        if (uri.Host.EndsWith(".aliyuncs.com", true, default)) {
+            bucketName = uri.Host.Split(".").FirstOrDefault();
+            return !string.IsNullOrWhiteSpace(bucketName);
+        }
+        return false;
     }
     /// <summary>
     /// 获取可以访问的地址
@@ -513,31 +580,26 @@ public sealed class AliOssClient {
         return false;
     }
 
-    private static bool IsMatch(string input, Regex regex) => regex.IsMatch(input);
-
     /// <summary>
     /// 根据扩展名获取ContentType（只支持少数几个常用的文件格式）
     /// </summary>
     /// <param name="filename"></param>
-    /// <param name="contentType"></param>
+    /// <param name="contentType">如果未指定会使用：<c>application/octet-stream</c></param>
     /// <returns></returns>
     public static string GetContentTypeByFilename(string filename, string? contentType = default) {
-        if (string.IsNullOrWhiteSpace(contentType)) {
-            var extension = Path.GetExtension(filename).ToLower();
-            contentType = extension switch {
-                ".csv" => "text/csv",
-                ".xls" => "application/vnd.ms-excel",
-                ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".xlsm" => "application/vnd.ms-excel.sheet.macroEnabled.12",
-                ".zip" => "application/zip",
-                ".png" => "image/png",
-                ".jpg" => "image/jpeg ",
-                ".jpeg" => "image/jpeg ",
-                ".json" => "application/json",
-                ".psd" => "image/vnd.adobe.photoshop",
-                _ => "application/octet-stream",
-            };
-        }
-        return contentType;
+        var extension = Path.GetExtension(filename).ToLower();
+        return extension switch {
+            ".csv" => "text/csv",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xlsm" => "application/vnd.ms-excel.sheet.macroEnabled.12",
+            ".zip" => "application/zip",
+            ".png" => "image/png",
+            ".jpg" => "image/jpeg ",
+            ".jpeg" => "image/jpeg ",
+            ".json" => "application/json",
+            ".psd" => "image/vnd.adobe.photoshop",
+            _ => contentType ?? "application/octet-stream",
+        };
     }
 }
