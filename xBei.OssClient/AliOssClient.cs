@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using System.Text.RegularExpressions;
 using Aliyun.OSS;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -88,7 +87,7 @@ public sealed class AliOssClient {
     /// </summary>
     public IEnumerable<string> BucketList => options.Services.Values.Select(x => x.BucketName);
     /// <summary>
-    /// OSS的域名（可能时自定义域名）
+    /// OSS的域名（可能是自定义域名：https://i.domain.com）
     /// </summary>
     public string Host { get; private set; }
     /// <summary>
@@ -450,7 +449,7 @@ public sealed class AliOssClient {
     /// <param name="uri"></param>
     /// <returns></returns>
     public async Task<Models.OssImageInfo?> GetImageInfoAsync(Uri uri) {
-        if(!GetBucketName(uri, out var bucketName)) {
+        if (!GetBucketName(uri, out var bucketName)) {
             return default;
         }
         var key = System.Web.HttpUtility.UrlDecode(uri.AbsolutePath[1..]);
@@ -472,6 +471,89 @@ public sealed class AliOssClient {
     }
     private static string ReadString(MemoryStream buffer) => Encoding.UTF8.GetString(buffer.ToArray());
     private static T? TryDeserialize<T>(string json) => System.Text.Json.JsonSerializer.Deserialize<T>(json);
+    #region GeneratePresignedUri
+    /// <summary>
+    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数。
+    /// 如果识别失败会返回原始地址
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="span"></param>
+    /// <returns></returns>
+    public string? RefreshPresignedUri(string? url, TimeSpan span) {
+        return GeneratePresignedUri(url, span, out var result) ? result : url;
+    }
+    /// <summary>
+    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="expiration"></param>
+    /// <param name="result"></param>
+    /// <returns></returns>
+    public bool GeneratePresignedUri(string? url, TimeSpan expiration, [NotNullWhen(true)] out string? result) {
+        result = default;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+            return false;
+        }
+        return GeneratePresignedUri(uri, expiration, out result);
+    }
+    /// <summary>
+    /// 为<paramref name="uri"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <param name="expiration"></param>
+    /// <param name="result"></param>
+    /// <returns></returns>
+    public bool GeneratePresignedUri(Uri uri, TimeSpan expiration, [NotNullWhen(true)] out string? result) {
+        result = default;
+        foreach (var item in options.Services) {
+            if (string.Compare(uri.Host, item.Value.ImageHost
+                                                   ?.Replace("https://", "")
+                                                    .Replace("http://", ""), true) == 0) {
+                result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                return true;
+            }
+            if (uri.Host.EndsWith(".aliyuncs.com", true, null)
+                && item.Value.BucketName.Equals(uri.Host.Split(".").First(), StringComparison.OrdinalIgnoreCase)) {
+                result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private string GeneratePresignedUri(AliOssSettings.Config value, string objKey, TimeSpan expiration) {
+        var req = new GeneratePresignedUriRequest(value.BucketName, objKey, SignHttpMethod.Get) {
+            Expiration = DateTime.UtcNow.Add(expiration)
+        };
+        return new UriBuilder(Client.GeneratePresignedUri(req)) {
+            Host = value.ImageHost?.Split('/').Last(),
+        }.Uri.AbsoluteUri;
+    }
+
+    /// <summary>
+    /// 获取临时访问地址
+    /// </summary>
+    /// <param name="objKey"></param>
+    /// <param name="expiration"></param>
+    /// <returns></returns>
+    public string GeneratePresignedUri(string objKey, TimeSpan expiration) {
+        return GeneratePresignedUri(objKey, DateTime.Now.Add(expiration));
+    }
+    /// <summary>
+    /// 获取临时访问地址
+    /// </summary>
+    /// <param name="objKey"></param>
+    /// <param name="expiration"></param>
+    /// <returns></returns>
+    public string GeneratePresignedUri(string objKey, DateTime expiration) {
+        var req = new GeneratePresignedUriRequest(BucketName, objKey, SignHttpMethod.Get) {
+            Expiration = expiration
+        };
+        return new UriBuilder(Client.GeneratePresignedUri(req)) {
+            Host = Host.Split('/').Last(),
+        }.Uri.AbsoluteUri;
+    }
+    #endregion
     /// <summary>
     /// 从<paramref name="url"/>中判断BucketName，判断失败返回 null
     /// </summary>
