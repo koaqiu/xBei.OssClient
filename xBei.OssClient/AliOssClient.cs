@@ -527,6 +527,8 @@ public sealed class AliOssClient {
         };
         return new UriBuilder(Client.GeneratePresignedUri(req)) {
             Host = value.ImageHost?.Split('/').Last(),
+            Scheme = "https",
+            Port = 443
         }.Uri.AbsoluteUri;
     }
 
@@ -551,6 +553,8 @@ public sealed class AliOssClient {
         };
         return new UriBuilder(Client.GeneratePresignedUri(req)) {
             Host = Host.Split('/').Last(),
+            Scheme = "https",
+            Port = 443
         }.Uri.AbsoluteUri;
     }
     #endregion
