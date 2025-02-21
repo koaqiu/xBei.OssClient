@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Web;
 using Aliyun.OSS;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -473,7 +474,7 @@ public sealed class AliOssClient {
     private static T? TryDeserialize<T>(string json) => System.Text.Json.JsonSerializer.Deserialize<T>(json);
     #region GeneratePresignedUri
     /// <summary>
-    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数。
+    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃除了“x-oss-process”以外的查询参数。
     /// 如果识别失败会返回原始地址
     /// </summary>
     /// <param name="url"></param>
@@ -483,7 +484,7 @@ public sealed class AliOssClient {
         return GeneratePresignedUri(url, span, out var result) ? result : url;
     }
     /// <summary>
-    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数
+    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃除了“x-oss-process”以外的查询参数。
     /// </summary>
     /// <param name="url"></param>
     /// <param name="expiration"></param>
@@ -497,7 +498,22 @@ public sealed class AliOssClient {
         return GeneratePresignedUri(uri, expiration, out result);
     }
     /// <summary>
-    /// 为<paramref name="uri"/>生成临时访问地址，会自动识别BucketName，并且抛弃所有的查询参数
+    /// 为<paramref name="url"/>生成临时访问地址，会自动识别BucketName，并且抛弃除了“x-oss-process”以外的查询参数。
+    /// </summary>
+    /// <param name="url"></param>
+    /// <param name="ossProcess">会覆盖<paramref name="url"/>中带的“x-oss-process”查询参数</param>
+    /// <param name="expiration"></param>
+    /// <param name="result"></param>
+    /// <returns></returns>
+    public bool GeneratePresignedUri(string? url, string ossProcess, TimeSpan expiration, [NotNullWhen(true)] out string? result) {
+        result = default;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) {
+            return false;
+        }
+        return GeneratePresignedUri(uri, ossProcess, expiration, out result);
+    }
+    /// <summary>
+    /// 为<paramref name="uri"/>生成临时访问地址，会自动识别BucketName，并且抛弃除了“x-oss-process”以外的查询参数。
     /// </summary>
     /// <param name="uri"></param>
     /// <param name="expiration"></param>
@@ -509,29 +525,62 @@ public sealed class AliOssClient {
             if (string.Compare(uri.Host, item.Value.ImageHost
                                                    ?.Replace("https://", "")
                                                     .Replace("http://", ""), true) == 0) {
-                result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                var nv = HttpUtility.ParseQueryString(uri.Query);
+                var ossProcess = nv.Get("x-oss-process");
+                if (string.IsNullOrWhiteSpace(ossProcess)) {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                } else {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], ossProcess, expiration);
+                }
                 return true;
             }
             if (uri.Host.EndsWith(".aliyuncs.com", true, null)
                 && item.Value.BucketName.Equals(uri.Host.Split(".").First(), StringComparison.OrdinalIgnoreCase)) {
-                result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                var nv = HttpUtility.ParseQueryString(uri.Query);
+                var ossProcess = nv.Get("x-oss-process");
+                if (string.IsNullOrWhiteSpace(ossProcess)) {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                } else {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], ossProcess, expiration);
+                }
                 return true;
             }
         }
         return false;
     }
-
-    private string GeneratePresignedUri(AliOssSettings.Config value, string objKey, TimeSpan expiration) {
-        var req = new GeneratePresignedUriRequest(value.BucketName, objKey, SignHttpMethod.Get) {
-            Expiration = DateTime.UtcNow.Add(expiration)
-        };
-        return new UriBuilder(Client.GeneratePresignedUri(req)) {
-            Host = value.ImageHost?.Split('/').Last(),
-            Scheme = "https",
-            Port = 443
-        }.Uri.AbsoluteUri;
+    /// <summary>
+    /// 为<paramref name="uri"/>生成临时访问地址，会自动识别BucketName，并且抛弃除了“x-oss-process”以外的查询参数。
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <param name="ossProcess">会覆盖<paramref name="uri"/>中带的“x-oss-process”查询参数</param>
+    /// <param name="expiration"></param>
+    /// <param name="result"></param>
+    /// <returns></returns>
+    public bool GeneratePresignedUri(Uri uri, string ossProcess, TimeSpan expiration, [NotNullWhen(true)] out string? result) {
+        result = default;
+        foreach (var item in options.Services) {
+            if (string.Compare(uri.Host, item.Value.ImageHost
+                                                   ?.Replace("https://", "")
+                                                    .Replace("http://", ""), true) == 0) {
+                if (string.IsNullOrWhiteSpace(ossProcess)) {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                } else {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], ossProcess, expiration);
+                }
+                return true;
+            }
+            if (uri.Host.EndsWith(".aliyuncs.com", true, null)
+                && item.Value.BucketName.Equals(uri.Host.Split(".").First(), StringComparison.OrdinalIgnoreCase)) {
+                if (string.IsNullOrWhiteSpace(ossProcess)) {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], expiration);
+                } else {
+                    result = GeneratePresignedUri(item.Value, uri.AbsolutePath[1..], ossProcess, expiration);
+                }
+                return true;
+            }
+        }
+        return false;
     }
-
     /// <summary>
     /// 获取临时访问地址
     /// </summary>
@@ -553,6 +602,55 @@ public sealed class AliOssClient {
         };
         return new UriBuilder(Client.GeneratePresignedUri(req)) {
             Host = Host.Split('/').Last(),
+            Scheme = "https",
+            Port = 443
+        }.Uri.AbsoluteUri;
+    }
+    /// <summary>
+    /// 获取临时访问地址
+    /// </summary>
+    /// <param name="objKey"></param>
+    /// <param name="process"></param>
+    /// <param name="expiration"></param>
+    /// <returns></returns>
+    public string GeneratePresignedUri(string objKey, string process, TimeSpan expiration) {
+        return GeneratePresignedUri(objKey, process, DateTime.Now.Add(expiration));
+    }
+    /// <summary>
+    /// 获取临时访问地址
+    /// </summary>
+    /// <param name="objKey"></param>
+    /// <param name="process"></param>
+    /// <param name="expiration"></param>
+    /// <returns></returns>
+    public string GeneratePresignedUri(string objKey, string process, DateTime expiration) {
+        var req = new GeneratePresignedUriRequest(BucketName, objKey, SignHttpMethod.Get) {
+            Expiration = expiration,
+            Process = process
+        };
+        return new UriBuilder(Client.GeneratePresignedUri(req)) {
+            Host = Host.Split('/').Last(),
+            Scheme = "https",
+            Port = 443
+        }.Uri.AbsoluteUri;
+    }
+    private string GeneratePresignedUri(AliOssSettings.Config value, string objKey, TimeSpan expiration) {
+        var req = new GeneratePresignedUriRequest(value.BucketName, objKey, SignHttpMethod.Get) {
+            Expiration = DateTime.UtcNow.Add(expiration),
+        };
+        return new UriBuilder(Client.GeneratePresignedUri(req)) {
+            Host = value.ImageHost?.Split('/').Last(),
+            Scheme = "https",
+            Port = 443
+        }.Uri.AbsoluteUri;
+    }
+    private string GeneratePresignedUri(AliOssSettings.Config value, string objKey, string process, TimeSpan expiration) {
+        var req = new GeneratePresignedUriRequest(value.BucketName, objKey, SignHttpMethod.Get) {
+            Expiration = DateTime.UtcNow.Add(expiration),
+            Process = process,
+        };
+        return new UriBuilder(Client.GeneratePresignedUri(req)) {
+            Host = value.ImageHost?.Split('/').Last(),
             Scheme = "https",
             Port = 443
         }.Uri.AbsoluteUri;

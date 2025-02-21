@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<RootNamespace>net.xBei.Clients.Oss</RootNamespace>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
-		<VersionPrefix>0.0.5.3</VersionPrefix>
+		<VersionPrefix>0.0.5.4</VersionPrefix>
 		<VersionSuffix>beta</VersionSuffix>
 		<PackageProjectUrl>https://github.com/koaqiu/xBei.OssClient</PackageProjectUrl>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
