@@ -185,6 +185,50 @@ public sealed class AliOssClient {
     public async Task<PutObjectResult> UploadAsync(string objectKey, Stream stream, string contentType = "application/octet-stream")
         => await UploadAsync(objectKey, stream, new ObjectMetadata() { ContentType = contentType });
     /// <summary>
+    /// 上传文件到 OSS。
+    /// </summary>
+    /// <param name="objectKey">目标对象的键。</param>
+    /// <param name="content">二进制</param>
+    /// <param name="fileName">文件名，用于设置 Content-Disposition。</param>
+    /// <param name="contentType">文件的 MIME 类型，默认为 "application/octet-stream"。</param>
+    /// <returns>返回上传操作的结果。</returns>
+    public async Task<PutObjectResult> UploadFileAsync(string objectKey, byte[] content, string fileName, string contentType = "application/octet-stream")
+        => await UploadFileAsync(objectKey, new MemoryStream(content), fileName, contentType);
+    /// <summary>
+    /// 上传文件到 OSS。
+    /// </summary>
+    /// <param name="objectKey">目标对象的键。</param>
+    /// <param name="stream">文件流，必须是可读的。</param>
+    /// <param name="fileName">文件名，用于设置 Content-Disposition。</param>
+    /// <param name="contentType">文件的 MIME 类型，默认为 "application/octet-stream"。</param>
+    /// <returns>返回上传操作的结果。</returns>
+    public async Task<PutObjectResult> UploadFileAsync(string objectKey, Stream stream, string fileName, string contentType = "application/octet-stream")
+        => await UploadAsync(objectKey, stream, new ObjectMetadata() {
+            ContentType = contentType,
+            ContentDisposition = GetContentDisposition(fileName),
+        });
+    private static string GetContentDisposition(string fileName) {
+        if (!fileName.Any(c => c > 127)) {
+            // 文件名不包含非ASCII字符，直接使用
+            return $"attachment; filename=\"{fileName}\"";
+        }
+        // 文件名包含非ASCII字符，需要进行编码
+        var encodedFileName = HttpUtility.UrlEncode(fileName, Encoding.UTF8);
+        // 移除非法字符，仅保留ASCII字符
+        var sanitizedFileName = new string(fileName.Where(c => c <= 127).ToArray());
+
+        // 分离扩展名
+        var extension = Path.GetExtension(fileName);
+        var baseName = Path.GetFileNameWithoutExtension(sanitizedFileName);
+
+        // 如果移除非法字符后，基础名称为空，指定默认合法名称
+        if (string.IsNullOrWhiteSpace(baseName)) {
+            baseName = "default_name";
+        }
+        sanitizedFileName = baseName + extension;
+        return $"attachment; filename=\"{sanitizedFileName}\"; filename*=UTF-8''{encodedFileName}";
+    }
+    /// <summary>
     /// 上传文件到 oss，优先自动从文件名中判断<c>Content-Type</c>，如果判断失败则使用<paramref name="contentType"/>
     /// </summary>
     /// <param name="objectKey"></param>
